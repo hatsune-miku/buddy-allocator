@@ -3,12 +3,10 @@
 
 #include <stdio.h>
 
-// I couldn't create a million-byte array on the stack.
-// So I had to use malloc to create it.
-#include <stdlib.h>
-
-#define TREE_DEPTH 17
+#define TREE_DEPTH 30
 #define MEMORY_SIZE_BYTES (2 << (TREE_DEPTH - 1))
+#define MEMORY_PAGES (1024)
+#define MEMORY_PER_PAGE_SIZE (MEMORY_SIZE_BYTES / MEMORY_PAGES)
 #define BLOCK_SIZE_MINIMUM_BYTES 20
 
 struct buddy_header;
@@ -24,6 +22,7 @@ struct buddy_header;
  */
 typedef struct buddy_header
 {
+    int page_index;
     bool allocated;
     size_t size;
     struct buddy_header* next;
@@ -33,13 +32,10 @@ typedef struct buddy_header
 #define HEADER_SIZE_BYTES (sizeof(hdr_t))
 
 
-// The entire virtual memory for the program is 64 KB.
-static char vm_store[MEMORY_SIZE_BYTES];
-// static char* vm_store;
-
-//Pointer to the vm+0 is always also the pointer to the first block.
-static void* vm;
-static void* vm_max;
+// The entire virtual memory for the program is 1 GB.
+static char vm_store[MEMORY_PAGES][MEMORY_PER_PAGE_SIZE];
+static size_t page_blocks[MEMORY_PAGES];
+static size_t total_allocated = 0;
 
 static bool initialized = false;
 
@@ -56,16 +52,15 @@ static inline hdr_t* get_header(void* addr)
 
 static inline void init()
 {
-    // vm_store = malloc(MEMORY_SIZE_BYTES);
-    vm = vm_store + 0;
-    vm_max = vm_store + MEMORY_SIZE_BYTES;
-
-    // Initialize the block master.
-    hdr_t* master = (hdr_t*) vm;
-    master->allocated = false;
-    master->size = MEMORY_SIZE_BYTES - HEADER_SIZE_BYTES;
-    master->next = NULL;
-    master->prev = NULL;
+    // Initialize pages.
+    for (int i = 0; i < MEMORY_PAGES; ++i) {
+        hdr_t* master = (hdr_t*) vm_store[i];
+        master->allocated = false;
+        master->size = MEMORY_SIZE_BYTES - HEADER_SIZE_BYTES;
+        master->next = NULL;
+        master->prev = NULL;
+        master->page_index = i;
+    }
 }
 
 static inline void try_init()
@@ -87,18 +82,20 @@ static inline bool perfect_fit(size_t provided, size_t required)
     return provided / 2 < required && required < provided;
 }
 
-static void buddy_print() {
-    for (hdr_t* current = (hdr_t*) vm; current; current = current->next) {
+void buddy_print(int page_index)
+{
+    unsigned int total = 0;
+    for (hdr_t* current = (hdr_t*) vm_store[page_index]; current; current = current->next) {
         if (current->allocated) {
             printf("\033[32m");
-        }
-        else {
+        } else {
             printf("\033[31m");
         }
         printf("%ld\033[0m, ", current->size + HEADER_SIZE_BYTES);
+        ++total;
 
     }
-    printf("\n");
+    printf("\n%u blocks in total\n", total);
 }
 
 
@@ -121,8 +118,10 @@ static hdr_t* buddy_alloc_safe(size_t size_required, hdr_t* entire, size_t lengt
 
     // Create left & right.
     hdr_t* left = entire;
+    left->page_index = entire->page_index;
     left->size = length / 2 - HEADER_SIZE_BYTES;
     hdr_t* right = (hdr_t*) (get_addr(left) + left->size);
+    right->page_index = left->page_index;
     right->size = left->size;
 
     // Link left & right.
@@ -155,21 +154,22 @@ void* buddy_malloc(size_t size)
 
     // Find the smallest block that can fit the requested size.
     hdr_t* ret = NULL;
-    for (hdr_t* current = (hdr_t*) vm; current; current = current->next) {
-        ret = buddy_alloc_safe(size, current, current->size + HEADER_SIZE_BYTES);
-        if (ret) {
-            break;
+    for (int i = 0; i < MEMORY_PAGES; ++i) {
+        if (page_blocks[i] + size >= MEMORY_PER_PAGE_SIZE) {
+            continue;
         }
+        for (hdr_t* current = (hdr_t*) vm_store[i]; current; current = current->next) {
+            ret = buddy_alloc_safe(size, current, current->size + HEADER_SIZE_BYTES);
+            if (ret) {
+                ret->allocated = true;
+                total_allocated += ret->size;
+                page_blocks[i] += ret->size + HEADER_SIZE_BYTES;
+                return get_addr(ret);
+            }
+        }
+        break;
     }
-
-    if (!ret) {
-        return NULL;
-    }
-
-    ret->allocated = true;
-    // buddy_print();
-
-    return get_addr(ret);
+    return NULL;
 }
 
 /**
@@ -227,6 +227,8 @@ void buddy_free(void* ptr)
 
     // Mark the block as free.
     header->allocated = false;
+    page_blocks[header->page_index] -= header->size + HEADER_SIZE_BYTES;
+    total_allocated -= header->size;
 
     // Merge right buddies.
     while (header->next && !header->next->allocated) {
@@ -295,15 +297,16 @@ bool buddy_allocated(void* ptr)
 {
     try_init();
 
-    // NULL, invalid address, or odd address?
-    if (!ptr || ptr >= vm_max) {
+    if (!ptr) {
         return false;
     }
 
     // Iterate over all blocks :(
-    for (hdr_t* current = (hdr_t*) vm; current; current = current->next) {
-        if (current->allocated && get_addr(current) == ptr) {
-            return true;
+    for (int i = 0; i < MEMORY_PAGES; ++i) {
+        for (hdr_t* current = (hdr_t*) vm_store[i]; current; current = current->next) {
+            if (current->allocated && get_addr(current) == ptr) {
+                return true;
+            }
         }
     }
     return false;
@@ -317,13 +320,5 @@ bool buddy_allocated(void* ptr)
  */
 size_t buddy_total_allocated(void)
 {
-    try_init();
-
-    size_t ret = 0;
-    for (hdr_t* current = (hdr_t*) vm; current; current = current->next) {
-        if (current->allocated) {
-            ret += current->size;
-        }
-    }
-    return ret;
+    return total_allocated;
 }

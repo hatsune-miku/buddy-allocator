@@ -48,3 +48,5 @@ bool buddy_allocated(void* ptr);
  *          **not** including any allocator overhead
  */
 size_t buddy_total_allocated(void);
+
+void buddy_print(int page_index);
