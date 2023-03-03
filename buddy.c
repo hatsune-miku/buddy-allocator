@@ -4,8 +4,8 @@
 #include <stdio.h>
 
 #define TREE_DEPTH 30
-#define MEMORY_SIZE_BYTES (2 << (TREE_DEPTH - 1))
-#define MEMORY_PAGES (1024)
+#define MEMORY_SIZE_BYTES (2ULL << (TREE_DEPTH - 1))
+#define MEMORY_PAGES (100)
 #define MEMORY_PER_PAGE_SIZE (MEMORY_SIZE_BYTES / MEMORY_PAGES)
 #define BLOCK_SIZE_MINIMUM_BYTES 20
 
@@ -56,7 +56,7 @@ static inline void init()
     for (int i = 0; i < MEMORY_PAGES; ++i) {
         hdr_t* master = (hdr_t*) vm_store[i];
         master->allocated = false;
-        master->size = MEMORY_SIZE_BYTES - HEADER_SIZE_BYTES;
+        master->size = MEMORY_PER_PAGE_SIZE - HEADER_SIZE_BYTES;
         master->next = NULL;
         master->prev = NULL;
         master->page_index = i;
@@ -155,7 +155,7 @@ void* buddy_malloc(size_t size)
     // Find the smallest block that can fit the requested size.
     hdr_t* ret = NULL;
     for (int i = 0; i < MEMORY_PAGES; ++i) {
-        if (page_blocks[i] + size >= MEMORY_PER_PAGE_SIZE) {
+        if (page_blocks[i] + size + HEADER_SIZE_BYTES >= MEMORY_PER_PAGE_SIZE) {
             continue;
         }
         for (hdr_t* current = (hdr_t*) vm_store[i]; current; current = current->next) {
