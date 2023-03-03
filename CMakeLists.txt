@@ -8,7 +8,7 @@ link_directories(/opt/homebrew/Cellar/libgrading/0.1.8/lib)
 link_libraries(grading)
 set(CMAKE_CXX_FLAGS "-std=c++17 -Wall -Werror")
 
-set(SRC rtos-alloc.c buddy.c memcpy.c supertest.c)
+set(SRC rtos-alloc.c buddy.c memcpy.c test.cpp)
 #  supertest.c
 #  test.cpp
 
