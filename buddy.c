@@ -3,12 +3,8 @@
 
 #include <stdio.h>
 
-// I can not create a huge array in the stack.
-// So I have to use malloc to create the `physical memory`.
-#include <stdlib.h>
-
-#define TREE_DEPTH 31
-#define MEMORY_SIZE_BYTES (2ULL << (TREE_DEPTH - 1))
+#define TREE_DEPTH 27
+#define MEMORY_SIZE_BYTES (1ULL << TREE_DEPTH)
 #define MEMORY_PAGES (1)
 #define MEMORY_PER_PAGE_SIZE (MEMORY_SIZE_BYTES / MEMORY_PAGES)
 #define BLOCK_SIZE_MINIMUM_BYTES 64
@@ -37,7 +33,7 @@ typedef struct buddy_header
 
 
 // The entire virtual memory for the program is 1 GB.
-static char* vm_store[MEMORY_PAGES]; // [MEMORY_PER_PAGE_SIZE];
+static char* vm_store[MEMORY_PAGES][MEMORY_PER_PAGE_SIZE];
 static size_t page_blocks[MEMORY_PAGES];
 static size_t total_allocated = 0;
 static hdr_t* last_block = NULL;
@@ -59,7 +55,6 @@ static inline void init()
 {
     // Initialize pages.
     for (int i = 0; i < MEMORY_PAGES; ++i) {
-        vm_store[i] = malloc(MEMORY_PER_PAGE_SIZE);
         hdr_t* master = (hdr_t*) vm_store[i];
         master->allocated = false;
         master->size = MEMORY_PER_PAGE_SIZE - HEADER_SIZE_BYTES;
