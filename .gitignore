@@ -2,7 +2,6 @@ build
 cmake-*
 passthrough*
 supertest.c
-evaluation.cpp
 .DS_Store
 .idea
 
