@@ -7,9 +7,9 @@
 // So I have to use malloc to create the `physical memory`.
 #include <stdlib.h>
 
-#define TREE_DEPTH 32
+#define TREE_DEPTH 31
 #define MEMORY_SIZE_BYTES (2ULL << (TREE_DEPTH - 1))
-#define MEMORY_PAGES (10)
+#define MEMORY_PAGES (1)
 #define MEMORY_PER_PAGE_SIZE (MEMORY_SIZE_BYTES / MEMORY_PAGES)
 #define BLOCK_SIZE_MINIMUM_BYTES 64
 
